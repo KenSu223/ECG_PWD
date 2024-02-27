@@ -170,44 +170,6 @@ def calculate_rdd(predicted_signals, true_signals):
     rdd = np.sum(np.abs(predicted_signals - true_signals) / (np.abs(true_signals) + 1e-10)) / len(true_signals)
     return rdd
 
-def calculate_fidelity(predicted_signals, true_signals, similarity_measure):
-    """
-    Calculate the fidelity of the predicted signals, assuming higher similarity scores indicate higher fidelity.
-
-    Parameters:
-    - predicted_signals: List or array of predicted signals.
-    - true_signals: List or array of true signals.
-    - similarity_measure: Function to calculate the similarity between two signals.
-
-    Returns:
-    - average_fidelity: The average fidelity score across all predicted signals.
-    """
-    fidelity_scores = [similarity_measure(pred, true) for pred, true in zip(predicted_signals, true_signals)]
-    average_fidelity = np.mean(fidelity_scores)
-    return average_fidelity
-
-def calculate_diversity(predicted_signals):
-    """
-    Calculate the diversity among the predicted signals based on pairwise Euclidean distances.
-
-    Parameters:
-    - predicted_signals: List or array of predicted signals.
-
-    Returns:
-    - average_diversity: The average diversity score across all pairs of predicted signals.
-    """
-    num_signals = len(predicted_signals)
-    total_distance = 0
-    count = 0
-
-    for i in range(num_signals):
-        for j in range(i+1, num_signals):
-            total_distance += np.linalg.norm(predicted_signals[i] - predicted_signals[j])
-            count += 1
-
-    average_diversity = total_distance / count if count else 0
-    return average_diversity
-
 def calculate_prd(generated_signal, real_signal):
     """
     Calculate the Percent Root Mean Square Difference (PRD) between a generated signal and a real signal.
@@ -417,8 +379,6 @@ correlation = calculate_correlation(generated_dopplers, DUS_array_test)
 sdtw = calculate_soft_dtw(generated_dopplers, DUS_array_test)
 ed = calculate_euclidean_distance(generated_dopplers, DUS_array_test)
 rdd = calculate_rdd(generated_dopplers, DUS_array_test)
-fidelity = calculate_fidelity(generated_dopplers, DUS_array_test,calculate_mae)
-diversity = calculate_diversity(generated_dopplers)
 prd = calculate_prd(generated_dopplers, DUS_array_test)
 entropy = calculate_spectral_entropy(generated_dopplers, DUS_array_test)
 psd = calculate_psd_difference(generated_dopplers, DUS_array_test)
@@ -435,8 +395,6 @@ print(f"Correlation: {correlation}")
 print(f"Soft DTW: {sdtw}")
 print(f"ED: {ed}")
 print(f"RDD: {rdd}")
-print(f"fidelity: {fidelity}")
-print(f"diversity: {diversity}")
 print(f"prd: {prd}")
 print(f"spectral entropy: {entropy}")
 print(f"psd difference: {psd}")
