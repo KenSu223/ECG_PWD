@@ -2,12 +2,12 @@
 
 ## Auto_FEDUS
 
-This repository contains code and resources for the **Auto-FEDUS** model to generated heartbeat DUS signals from input FECGs.
+This repository contains code and resources for the **Auto-FEDUS** model to generate heartbeat DUS signals from input FECGs.
 
 ## Repository Structure
-**`data/`** contains notebooks for data wrangling and preperation.
-Folders ending with _ecg are the ones we are actively working on to reporting the results in the paper.
-**`Auto-FEDUS/`** is the proposed model. We developed other generative approaches for comparison.
+**`data/`** contains notebooks for data wrangling and preparation. <br />
+Folders ending with _ecg are the ones we are actively working on to report the results in the paper. <br />
+**`Auto-FEDUS/`** is the proposed model. We developed other generative approaches for comparison.<br />
 
 Each folder contains the following components:
 
