@@ -5,57 +5,56 @@ import keras
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-batch_size = 64
-epochs = 100
+# Initialize parameters
+batch_size = 32
 latent_dim = 100
+epochs = 200
 
-# Function to generate a batch of random numbers
-loaded_data_train = np.load('data/Leipzing_FHR_heartbeat_train.npz',allow_pickle=True)
-loaded_data_test = np.load('data/Leipzing_FHR_heartbeat_5.npz',allow_pickle=True)
+# Loading the processed data
+data_files = [f'data/Leipzing_heartbeat_DUS_FECG_{i}.npz' for i in range(1, 9)]
+DUS_lists = []
+ECG_lists = []
 
-DUS_list_train=loaded_data_train['DUS_list']
-ECG_list_train=loaded_data_train['ECG_list']
+for file in data_files:
+    loaded_data = np.load(file, allow_pickle=True)
+    DUS_lists.append(np.array(loaded_data['DUS_list_all'], dtype=np.float32))
+    ECG_lists.append(np.array(loaded_data['ECG_list_all'], dtype=np.float32))
 
-DUS_array_train = np.array(DUS_list_train, dtype=np.float32)
-ECG_array_train = np.array(ECG_list_train, dtype=np.float32)
+# Format the train set
+DUS_train = np.concatenate((DUS_lists[1], DUS_lists[2], DUS_lists[3]))
+ECG_train = np.concatenate((ECG_lists[1], ECG_lists[2], ECG_lists[3]))
+# Format the test set
+DUS_test = DUS_lists[4]
+ECG_test = ECG_lists[4]
 
-DUS_list_test=loaded_data_test['DUS_list']
-ECG_list_test=loaded_data_test['ECG_list']
-
-DUS_array_test = np.array(DUS_list_test, dtype=np.float32)
-ECG_array_test = np.array(ECG_list_test, dtype=np.float32)
-
-dataset = tf.data.Dataset.from_tensor_slices((DUS_array_train, ECG_array_train))
-dataset = dataset.shuffle(buffer_size=4096).batch(batch_size)
-
-
+# Train the autoencoder model
 autoencoder = modules.Autoencoder(latent_dim)
-
-history= autoencoder.fit(ECG_array_train, DUS_array_train, epochs=epochs, batch_size=batch_size, shuffle=True)
+history= autoencoder.fit(ECG_train, DUS_train, epochs=epochs, batch_size=batch_size, shuffle=True)
 
 # Save the training loss
 training_loss = history.history['loss']
-np.save('./Autoencoder_ecg/logs/training_loss.npy', training_loss)
+np.save('./Autoencoder_beat/logs/training_loss.npy', training_loss)
 
-# Optionally, save the model
-autoencoder.save('./Autoencoder_ecg/models/autoencoder_model.h5')
+# Save the model
+autoencoder.save('./Autoencoder_beat/models/autoencoder_model_4.h5')
 
+# Show training loss
 plt.figure(figsize=(10, 5))
 plt.plot(training_loss, label='Training Loss')
 plt.title('Training Loss')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
-plt.savefig('Autoencoder_ecg/plots/loss.png')
+plt.savefig('Autoencoder_beat/plots/loss_4.jpg')
 plt.show()
 
+# Show some random generated
+# Randomly select 4 ECG samples and their corresponding real Doppler from the dataset
+random_indices = np.random.choice(len(ECG_test), 4, replace=False)
+selected_ecgs = ECG_test[random_indices]
+selected_real_dopplers = DUS_test[random_indices]
 
-# Randomly select 4 ECG samples and their corresponding real Doppler images from your dataset
-random_indices = np.random.choice(len(ECG_array_test), 4, replace=False)
-selected_ecgs = ECG_array_test[random_indices]
-selected_real_dopplers = DUS_array_test[random_indices]
-
-# Generate Doppler images using the GAN generator
+# Generate Doppler using the model
 generated_dopplers = autoencoder.predict(selected_ecgs).reshape(4,800)
-# Plot the selected ECGs, real Dopplers, and their corresponding generated Doppler images
+# Plot the selected ECGs, real Dopplers, and their corresponding generated Doppler signals
 modules.plot_ecg_doppler_pairs(selected_ecgs, selected_real_dopplers, generated_dopplers)
+modules.plot_scalogram(selected_real_dopplers, generated_dopplers)

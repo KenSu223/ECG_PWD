@@ -24,29 +24,7 @@ def Conv1DTranspose(filters, kernel_size, strides=1, padding='same', activation=
 
     return layer
 
-def Conv2D(filters, kernel_size, strides, padding='same', activation=None, use_bias = True):
-
-    layer = keras.layers.Conv1D(
-        filters=filters, kernel_size=kernel_size, strides=strides, padding=padding, data_format=None,
-        dilation_rate=1, groups=1, activation=activation, use_bias=use_bias, kernel_initializer=weights_initializer,
-        bias_initializer="zeros", kernel_regularizer=None, bias_regularizer=None, activity_regularizer=None,
-        kernel_constraint=None, bias_constraint=None
-    )
-
-    return layer
-
-def Conv2DTranspose(filters, kernel_size, strides, padding='same', activation=None, use_bias = True):
-    layer = keras.layers.Conv1DTranspose(
-        filters=filters, kernel_size=kernel_size, strides=strides, padding=padding, data_format=None,
-        dilation_rate=1, activation=activation, use_bias=use_bias, kernel_initializer="glorot_uniform",
-        bias_initializer="zeros", kernel_regularizer=None, bias_regularizer=None, activity_regularizer=None,
-        kernel_constraint=None, bias_constraint=None
-    )
-
-    return layer
-
 def Dense(units, activation=None):
-
     layer = keras.layers.Dense(
         units=units, activation=activation, use_bias=True, kernel_initializer="glorot_uniform",
         bias_initializer="zeros", kernel_regularizer=None, bias_regularizer=None,
