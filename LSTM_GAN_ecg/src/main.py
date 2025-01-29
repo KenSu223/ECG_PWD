@@ -5,29 +5,30 @@ import keras
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-batch_size = 64
+# Initialize parameters
+batch_size = 32
 latent_dim = 100
-epochs = 10
+epochs = 50
 noise_param = 0.1
 
-# Function to generate a batch of random numbers
-loaded_data_train = np.load('data/Leipzing_FHR_heartbeat_train.npz',allow_pickle=True)
-loaded_data_test = np.load('data/Leipzing_FHR_heartbeat_5.npz',allow_pickle=True)
+# Loading the processed data
+data_files = [f'data/Leipzing_heartbeat_DUS_FECG_{i}.npz' for i in range(1, 9)]
+DUS_lists = []
+ECG_lists = []
 
-DUS_list_train=loaded_data_train['DUS_list']
-ECG_list_train=loaded_data_train['ECG_list']
+for file in data_files:
+    loaded_data = np.load(file, allow_pickle=True)
+    DUS_lists.append(np.array(loaded_data['DUS_list_all'], dtype=np.float32))
+    ECG_lists.append(np.array(loaded_data['ECG_list_all'], dtype=np.float32))
 
-DUS_array_train = np.array(DUS_list_train, dtype=np.float32)
-ECG_array_train = np.array(ECG_list_train, dtype=np.float32)
+# Format the train set
+DUS_train = np.concatenate((DUS_lists[3], DUS_lists[2], DUS_lists[4]))
+ECG_train = np.concatenate((ECG_lists[3], ECG_lists[2], ECG_lists[4]))
+# Format the test set
+DUS_test = DUS_lists[1]
+ECG_test = ECG_lists[1]
 
-DUS_list_test=loaded_data_test['DUS_list']
-ECG_list_test=loaded_data_test['ECG_list']
-
-DUS_array_test = np.array(DUS_list_test, dtype=np.float32)
-ECG_array_test = np.array(ECG_list_test, dtype=np.float32)
-
-dataset = tf.data.Dataset.from_tensor_slices((DUS_array_train, ECG_array_train))
+dataset = tf.data.Dataset.from_tensor_slices((DUS_train, ECG_train))
 dataset = dataset.shuffle(buffer_size=4096).batch(batch_size)
 
 
@@ -110,37 +111,6 @@ class GAN(keras.Model):
         }
     
 
-class GANMonitor(keras.callbacks.Callback):
-    def __init__(self, num_sample=4, latent_dim=128):
-        self.num_sample = num_sample
-        self.latent_dim = latent_dim
-        self.seed_generator = tf.random.set_seed(2024)
-        self.d_losses = []
-        self.g_losses = []
-        self.d_accuracies = []
-        self.g_accuracies = []
-
-    def on_epoch_end(self, epoch, logs=None):
-        random_latent_vectors = tf.random.normal(
-            shape=(self.num_sample, self.latent_dim), seed=self.seed_generator
-        )
-        generated_sample = self.model.generator(random_latent_vectors)
-        generated_sample = generated_sample.numpy()
-        #for i in range(self.num_sample):
-        #    np.save("generated_sample_%03d_%d.npy" % (epoch, i), generated_sample)
-
-        # Log and save metrics
-        self.d_losses.append(logs['d_loss'])
-        self.g_losses.append(logs['g_loss'])
-        self.d_accuracies.append(logs['d_acc'])
-        self.g_accuracies.append(logs['g_acc'])
-
-        # Save metrics to file at each epoch
-        np.save('./LSTM_GAN_ecg/logs/discriminator_losses.npy', np.array(self.d_losses))
-        np.save('./LSTM_GAN_ecg/logs/generator_losses.npy', np.array(self.g_losses))
-        np.save('./LSTM_GAN_ecg/logs/discriminator_accuracies.npy', np.array(self.d_accuracies))
-        np.save('./LSTM_GAN_ecg/logs/generator_accuracies.npy', np.array(self.g_accuracies))
-
 # Initialize lists to store metrics
 d_losses, g_losses, d_accuracies, g_accuracies = [], [], [], []
 
@@ -152,15 +122,15 @@ class CustomCallback(keras.callbacks.Callback):
         d_accuracies.append(logs.get('d_acc'))
         g_accuracies.append(logs.get('g_acc'))
 
-        np.save('./LSTM_GAN_ecg/logs/discriminator_losses.npy', d_losses)
-        np.save('./LSTM_GAN_ecg/logs/generator_losses.npy', g_losses)
-        np.save('./LSTM_GAN_ecg/logs/discriminator_accuracies.npy', d_accuracies)
-        np.save('./LSTM_GAN_ecg/logs/generator_accuracies.npy', g_accuracies)
+        np.save('./LSTM_GAN_beat/logs/discriminator_losses.npy', d_losses)
+        np.save('./LSTM_GAN_beat/logs/generator_losses.npy', g_losses)
+        np.save('./LSTM_GAN_beat/logs/discriminator_accuracies.npy', d_accuracies)
+        np.save('./LSTM_GAN_beat/logs/generator_accuracies.npy', g_accuracies)
 
     def on_train_end(self, logs=None):
         # Save the final generator and discriminator models
-        self.model.generator.save('./LSTM_GAN_ecg/models/final_generator.h5')
-        self.model.discriminator.save('./LSTM_GAN_ecg/models/final_discriminator.h5')
+        self.model.generator.save('./LSTM_GAN_beat/models/final_generator_1.h5')
+        self.model.discriminator.save('./LSTM_GAN_beat/models/final_discriminator_1.h5')
 
 lstmgan = GAN(
     discriminator=modules.discriminator((800,1)), generator=modules.generator(latent_dim), 
@@ -180,7 +150,7 @@ lstmgan.fit(
     )
 
 
-# Plotting the metrics
+#Plotting the metrics
 epochs_range = range(epochs)
 
 plt.figure(figsize=(12, 6))
@@ -195,15 +165,17 @@ plt.plot(epochs_range, d_accuracies, label='Discriminator Accuracy')
 plt.plot(epochs_range, g_accuracies, label='Generator Accuracy')
 plt.title('Accuracy Over Epochs')
 plt.legend()
-plt.savefig('LSTM_GAN_ecg/plots/loss-acc.png')
+plt.savefig('LSTM_GAN_beat/plots/loss-acc.jpg')
 plt.show()
 
-# Randomly select 4 ECG samples and their corresponding real Doppler images from your dataset
-random_indices = np.random.choice(len(ECG_array_test), 4, replace=False)
-selected_ecgs = ECG_array_test[random_indices]
-selected_real_dopplers = DUS_array_test[random_indices]
-
-# Generate Doppler images using the GAN generator
-generated_dopplers = lstmgan.generator(selected_ecgs).numpy().reshape(4,800)
-# Plot the selected ECGs, real Dopplers, and their corresponding generated Doppler images
+# Show some random generated
+# Randomly select 4 ECG samples and their corresponding real Doppler from the dataset
+random_indices = np.random.choice(len(ECG_test), 4, replace=False)
+selected_ecgs = ECG_test[random_indices]
+selected_real_dopplers = DUS_test[random_indices]
+print(np.shape(selected_ecgs))
+# Generate Doppler using the model
+generated_dopplers = lstmgan.generator.predict(selected_ecgs).reshape(4,800)
+# Plot the selected ECGs, real Dopplers, and their corresponding generated Doppler signals
 modules.plot_ecg_doppler_pairs(selected_ecgs, selected_real_dopplers, generated_dopplers)
+modules.plot_scalogram(selected_real_dopplers, generated_dopplers)

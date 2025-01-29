@@ -3,7 +3,7 @@ import keras
 weights_initializer = keras.initializers.RandomNormal(mean=0.0, stddev=0.02, seed=2024)
 
 
-def Conv1D(filters, kernel_size, strides=1, padding='same', activation=None, use_bias = True):
+def Conv1D(filters, kernel_size, dilation_rate=1, strides=1, padding='same', activation=None, use_bias = True):
 
     layer = keras.layers.Conv1D(
         filters=filters, kernel_size=kernel_size, strides=strides, padding=padding, data_format=None,
@@ -14,10 +14,10 @@ def Conv1D(filters, kernel_size, strides=1, padding='same', activation=None, use
 
     return layer
 
-def Conv1DTranspose(filters, kernel_size, strides=1, padding='same', activation=None, use_bias = True):
+def Conv1DTranspose(filters, kernel_size, dilation_rate=1, strides=1,padding='same', activation=None, use_bias = True):
     layer = keras.layers.Conv1DTranspose(
         filters=filters, kernel_size=kernel_size, strides=strides, padding=padding, data_format=None,
-        dilation_rate=1, activation=activation, use_bias=use_bias, kernel_initializer="glorot_uniform",
+        dilation_rate=dilation_rate, activation=activation, use_bias=use_bias, kernel_initializer="glorot_uniform",
         bias_initializer="zeros", kernel_regularizer=None, bias_regularizer=None, activity_regularizer=None,
         kernel_constraint=None, bias_constraint=None
     )
@@ -25,7 +25,6 @@ def Conv1DTranspose(filters, kernel_size, strides=1, padding='same', activation=
     return layer
 
 def Dense(units, activation=None):
-
     layer = keras.layers.Dense(
         units=units, activation=activation, use_bias=True, kernel_initializer="glorot_uniform",
         bias_initializer="zeros", kernel_regularizer=None, bias_regularizer=None,
