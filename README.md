@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # SynthDoppler-Generation
 
 ## Auto_FEDUS
