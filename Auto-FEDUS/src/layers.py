@@ -14,6 +14,14 @@ def Conv1D(filters, kernel_size, strides=1, padding='same', activation=None, use
 
     return layer
 
+def DilatedConv1D(filters, kernel_size, dilation_rate, strides=1,
+                  padding='same', activation=None, use_bias=True):
+    return keras.layers.Conv1D(
+        filters=filters, kernel_size=kernel_size, strides=strides,
+        padding=padding, dilation_rate=dilation_rate, activation=activation,
+        use_bias=use_bias, kernel_initializer=weights_initializer,
+        bias_initializer="zeros"
+    )
                  
 def CausalConv1D(filters, kernel_size,dilation_rate, strides=1, padding='causal', activation=None, use_bias = True):
 
@@ -63,7 +71,7 @@ def BatchNormalization(momentum=0.99, epsilon=0.001, trainable=True, virtual_bat
 def Activation(x, activation):
     
     if activation == 'relu':
-        return keras.activations.relu(x, alpha=0.0, max_value=None, threshold=0)
+        return keras.activations.relu(x)
     elif activation == 'leaky_relu':
         return keras.activations.relu(x, alpha=0.2, max_value=None, threshold=0)
     elif activation == 'silu':

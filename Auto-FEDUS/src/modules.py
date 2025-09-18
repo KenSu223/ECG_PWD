@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 
 def wavenet_block(x, filters, kernel_size, dilation_rate, input_layer):
     """Defines a single WaveNet block."""
-    tanh_out = layers.CausalConv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate, activation='tanh')(x)
+    tanh_out = layers.DilatedConv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate, activation='tanh')(x)
 
-    sigmoid_out = layers.CausalConv1D(filters=filters, kernel_size=kernel_size,  dilation_rate=dilation_rate,activation='sigmoid')(x)
+    sigmoid_out = layers.DilatedConv1D(filters=filters, kernel_size=kernel_size,  dilation_rate=dilation_rate,activation='sigmoid')(x)
 
     x = Multiply()([tanh_out, sigmoid_out])
 
@@ -23,8 +23,50 @@ def wavenet_block(x, filters, kernel_size, dilation_rate, input_layer):
     
     return x, skip_conn
 
+def wavenet_block_v2(x_in, filters, kernel_size, dilation_rate):
+    # gated convs (causal, dilated)
+    tanh_out = layers.DilatedConv1D(filters=filters, kernel_size=kernel_size,
+                                   dilation_rate=dilation_rate, activation='tanh')(x_in)
+    sigm_out = layers.DilatedConv1D(filters=filters, kernel_size=kernel_size,
+                                   dilation_rate=dilation_rate, activation='sigmoid')(x_in)
+    x = Multiply()([tanh_out, sigm_out])  # gated output
 
-def WaveNet(input_shape, filters=64, kernel_size=20, dilation_rates=[2**i for i in range(5)]): 
+    # skip connection (1x1)
+    skip = layers.Conv1D(filters, 1)(x)
+
+    # residual projection through conv (1x1) + add
+    res = layers.Conv1D(filters, 1)(x_in)
+    x_out = Add()([x, res])
+    return x_out, skip
+
+def WaveNet_v2(input_shape, filters=64, kernel_size=20, dilation_rates=[2**i for i in range(7)]): 
+
+    # Input layer
+    input_layer = Input(shape=input_shape, name='fetal_ecg_to_doppler')
+
+    # Initial condition layer to start the residual connections
+    skip_connections = []
+
+    x = input_layer
+    #x = layers.DilatedConv1D(filters=filters, kernel_size=1, dilation_rate=1, padding='same')(inp)
+    for dilation_rate in dilation_rates:
+        x, skip_conn = wavenet_block_v2(x, filters, kernel_size, dilation_rate)
+        skip_connections.append(skip_conn)
+
+    out = Add()(skip_connections)
+    out = layers.Activation(out, 'relu')  # post-processing: ReLU -> 1x1 -> ReLU -> 1x1
+    out = layers.Conv1D(filters, 1)(out)
+    out = layers.Activation(out, 'relu')
+    out = layers.Conv1D(1, 1)(out)
+    out = layers.Activation(out, 'tanh')
+
+    # Building the model
+    model = Model(inputs=input_layer, outputs=out, name='WaveNet_one_channel')
+    model.summary()
+    
+    return model
+
+def WaveNet(input_shape, filters=64, kernel_size=20, dilation_rates=[2**i for i in range(7)]): 
 
     # Input layer
     input_layer = Input(shape=input_shape)
@@ -42,10 +84,9 @@ def WaveNet(input_shape, filters=64, kernel_size=20, dilation_rates=[2**i for i 
     out = layers.Activation(out, 'tanh')
     out = layers.Conv1D(1,  kernel_size=1)(out)
     out = layers.Activation(out, 'tanh')
-    out = layers.Conv1D(1,  kernel_size=1)(out)
 
-    out = Flatten()(out)
-    out = layers.Dense(800, activation='tanh')(out)
+    #out = layers.Conv1D(1,  kernel_size=1)(out)
+    #out = layers.Activation(out, 'tanh')         # final tanh in range [-1,1]
 
     # Building the model
     model = Model(inputs=input_layer, outputs=out)
@@ -54,7 +95,7 @@ def WaveNet(input_shape, filters=64, kernel_size=20, dilation_rates=[2**i for i 
     return model
 
 
-def create_scalogram(sig, fs=2000, time_bins=160, freq_bins=80):
+def create_scalogram(sig, fs=284, time_bins=160, freq_bins=80):
     scales = np.arange(1, freq_bins + 1)
     coeffs, f = pywt.cwt(sig, scales, wavelet='cgau8', sampling_period=1/fs)
     coeffs = np.abs(coeffs)
@@ -110,8 +151,8 @@ def plot_ecg_doppler_pairs(ecgs, real_dopplers, generated_dopplers):
 def plot_scalogram(real, generated, time_bins=160, freq_bins=80):
     plt.figure(figsize=(18, 10))
     coeffs_rs, fs_rs, coeffs_gs, fs_gs = [],[],[],[]
-    fs = 2000
-    t = np.linspace(0, 0.4, time_bins)
+    fs = 284
+    t = np.linspace(0, len(real)/fs, time_bins)
     scales = np.arange(1, freq_bins)
     tensor_real=[]
     tensor_generated=[]
@@ -140,3 +181,32 @@ def plot_scalogram(real, generated, time_bins=160, freq_bins=80):
 
     plt.savefig('WaveNet_beat/plots/scalograms_test.jpg')
     plt.show()
+
+def plot_ecg_doppler_overlay(ecgs, real_dopplers, generated_dopplers, labels=None, colors=None):
+    """
+    Plots ECG, real Doppler, and generated Doppler signals overlaid on the same axes for each sample.
+
+    Parameters:
+    - ecgs: list or array of ECG signals
+    - real_dopplers: list or array of corresponding real Doppler signals
+    - generated_dopplers: list or array of corresponding generated Doppler signals
+    - labels: dict mapping 'ecg', 'real', 'gen' to legend labels (optional)
+    - colors: dict mapping 'ecg', 'real', 'gen' to color strings (optional)
+    """
+    labels = labels or {'ecg': 'ECG', 'real': 'Real Doppler', 'gen': 'Generated Doppler'}
+    colors = colors or {'ecg': 'royalblue', 'real': 'blue', 'gen': 'red'}
+
+    for i, (ecg, real_dop, gen_dop) in enumerate(zip(ecgs, real_dopplers, generated_dopplers), start=1):
+        plt.figure(figsize=(10, 4))
+        plt.plot(ecg, label=labels['ecg'], color=colors['ecg'], linewidth=1)
+        plt.plot(real_dop, label=labels['real'], color=colors['real'], linewidth=1)
+        plt.plot(gen_dop, label=labels['gen'], color=colors['gen'], linewidth=1, linestyle='--')
+
+        plt.title(f'Sample {i}')
+        plt.legend(loc='upper right')
+        plt.xlabel('Time / Sample Index')
+        plt.ylabel('Amplitude')
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(f'WaveNet_beat/plots/signals_test_{i}.jpg')
+        plt.show()
