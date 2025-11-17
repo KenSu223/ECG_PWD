@@ -1,0 +1,2 @@
+train_patients,val_patients,train_segments,val_segments,best_val_loss,final_train_loss,final_lr,loss_type,use_base,use_peak,use_ratio,use_derivative,use_softdtw,use_corr,use_mrstft,base_loss
+30,9,624,261,0.3845531642436981,0.020299965515732765,0.001,mae,True,False,False,False,False,False,False,mae

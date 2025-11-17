@@ -1,0 +1,2 @@
+train_patients,val_patients,train_segments,val_segments,best_val_loss,final_train_loss,final_lr,loss_type,alpha_peak,alpha_ratio
+31,8,693,192,0.42861321568489075,0.414903461933136,0.001,shape_preserving,0.2,0.2

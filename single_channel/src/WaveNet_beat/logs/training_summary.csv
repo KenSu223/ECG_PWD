@@ -1,0 +1,2 @@
+train_patients,val_patients,train_segments,val_segments,best_val_loss,final_train_loss,final_lr
+31,8,693,192,0.39906859397888184,0.3810366988182068,0.0001
