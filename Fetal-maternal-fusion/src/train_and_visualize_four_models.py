@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Add
 from tensorflow.keras.models import Model
-from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from scipy.signal import butter, sosfiltfilt
 
 import modules
@@ -76,6 +76,39 @@ def smooth_doppler_batch(doppler_batch, fs, cutoff_hz=10.0, order=4):
     return smoothed
 
 
+def composite_loss(alpha=0.5):
+    def loss_fn(y_true, y_pred):
+        if len(y_true.shape) == 3:
+            y_true_2d = tf.squeeze(y_true, axis=-1)
+        else:
+            y_true_2d = y_true
+        if len(y_pred.shape) == 3:
+            y_pred_2d = tf.squeeze(y_pred, axis=-1)
+        else:
+            y_pred_2d = y_pred
+
+        mae = tf.reduce_mean(tf.abs(y_true_2d - y_pred_2d))
+
+        dy_true = y_true_2d[:, 1:] - y_true_2d[:, :-1]
+        dy_pred = y_pred_2d[:, 1:] - y_pred_2d[:, :-1]
+        deriv = tf.reduce_mean(tf.abs(dy_true - dy_pred))
+
+        eps = 1e-7
+        y_true_centered = y_true_2d - tf.reduce_mean(y_true_2d, axis=1, keepdims=True)
+        y_pred_centered = y_pred_2d - tf.reduce_mean(y_pred_2d, axis=1, keepdims=True)
+        y_true_std = tf.math.reduce_std(y_true_2d, axis=1, keepdims=True) + eps
+        y_pred_std = tf.math.reduce_std(y_pred_2d, axis=1, keepdims=True) + eps
+        y_true_norm = y_true_centered / y_true_std
+        y_pred_norm = y_pred_centered / y_pred_std
+        corr = tf.reduce_mean(y_true_norm * y_pred_norm, axis=1)
+        corr = tf.clip_by_value(corr, -1.0, 1.0)
+        corr_loss = tf.reduce_mean(1.0 - corr)
+
+        return mae + alpha * deriv + alpha * corr_loss
+
+    return loss_fn
+
+
 def build_one_channel_wavenet(input_shape, filters=64, kernel_size=20, dilation_rates=None):
     if dilation_rates is None:
         dilation_rates = [2**i for i in range(7)]
@@ -99,9 +132,24 @@ def build_one_channel_wavenet(input_shape, filters=64, kernel_size=20, dilation_
     return model
 
 
-def train_model(model, X_train, Y_train, X_val, Y_val, lr, epochs, batch_size, checkpoint_path=None):
+def train_model(
+    model,
+    X_train,
+    Y_train,
+    X_val,
+    Y_val,
+    lr,
+    epochs,
+    batch_size,
+    checkpoint_path=None,
+    alpha=0.5,
+    lr_reduce_factor=0.5,
+    lr_reduce_patience=5,
+    lr_min=1e-5,
+    early_stopping_patience=20,
+):
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
-    model.compile(optimizer=optimizer, loss="mae")
+    model.compile(optimizer=optimizer, loss=composite_loss(alpha=alpha))
     callbacks = []
     if checkpoint_path:
         callbacks.append(
@@ -114,6 +162,23 @@ def train_model(model, X_train, Y_train, X_val, Y_val, lr, epochs, batch_size, c
                 verbose=1,
             )
         )
+    callbacks.append(
+        EarlyStopping(
+            monitor="val_loss",
+            patience=early_stopping_patience,
+            restore_best_weights=True,
+            verbose=1,
+        )
+    )
+    callbacks.append(
+        ReduceLROnPlateau(
+            monitor="val_loss",
+            factor=lr_reduce_factor,
+            patience=lr_reduce_patience,
+            min_lr=lr_min,
+            verbose=1,
+        )
+    )
     history = model.fit(
         X_train,
         Y_train,
@@ -168,6 +233,11 @@ def main():
                         dest="apply_input_preprocess", default=True)
     parser.add_argument("--no_output_smoothing", action="store_false",
                         dest="apply_output_smoothing", default=True)
+    parser.add_argument("--alpha", type=float, default=0.5)
+    parser.add_argument("--lr_reduce_factor", type=float, default=0.5)
+    parser.add_argument("--lr_reduce_patience", type=int, default=5)
+    parser.add_argument("--lr_min", type=float, default=1e-5)
+    parser.add_argument("--early_stopping_patience", type=int, default=20)
     parser.add_argument("--output_dir", type=str, default=str(base_dir / "WaveNet_beat" / "plots"))
     parser.add_argument("--output_name", type=str, default="four_model_overlay.png")
     args = parser.parse_args()
@@ -250,6 +320,11 @@ def main():
                 args.epochs,
                 args.batch_size,
                 checkpoint_path=checkpoint_path,
+                alpha=args.alpha,
+                lr_reduce_factor=args.lr_reduce_factor,
+                lr_reduce_patience=args.lr_reduce_patience,
+                lr_min=args.lr_min,
+                early_stopping_patience=args.early_stopping_patience,
             )
             if os.path.exists(checkpoint_path):
                 model.load_weights(checkpoint_path)
@@ -266,6 +341,11 @@ def main():
                 args.epochs,
                 args.batch_size,
                 checkpoint_path=checkpoint_path,
+                alpha=args.alpha,
+                lr_reduce_factor=args.lr_reduce_factor,
+                lr_reduce_patience=args.lr_reduce_patience,
+                lr_min=args.lr_min,
+                early_stopping_patience=args.early_stopping_patience,
             )
             if os.path.exists(checkpoint_path):
                 model.load_weights(checkpoint_path)
