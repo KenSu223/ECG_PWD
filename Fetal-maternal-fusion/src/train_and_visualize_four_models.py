@@ -147,11 +147,12 @@ def train_model(
     lr_reduce_patience=5,
     lr_min=1e-5,
     early_stopping_patience=20,
+    use_best_weights=True,
 ):
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(optimizer=optimizer, loss=composite_loss(alpha=alpha))
     callbacks = []
-    if checkpoint_path:
+    if checkpoint_path and use_best_weights:
         callbacks.append(
             ModelCheckpoint(
                 filepath=checkpoint_path,
@@ -166,7 +167,7 @@ def train_model(
         EarlyStopping(
             monitor="val_loss",
             patience=early_stopping_patience,
-            restore_best_weights=True,
+            restore_best_weights=use_best_weights,
             verbose=1,
         )
     )
@@ -238,6 +239,8 @@ def main():
     parser.add_argument("--lr_reduce_patience", type=int, default=5)
     parser.add_argument("--lr_min", type=float, default=1e-5)
     parser.add_argument("--early_stopping_patience", type=int, default=20)
+    parser.add_argument("--no_best_weights", action="store_false",
+                        dest="use_best_weights", default=True)
     parser.add_argument("--output_dir", type=str, default=str(base_dir / "WaveNet_beat" / "plots"))
     parser.add_argument("--output_name", type=str, default="four_model_overlay.png")
     args = parser.parse_args()
@@ -325,8 +328,9 @@ def main():
                 lr_reduce_patience=args.lr_reduce_patience,
                 lr_min=args.lr_min,
                 early_stopping_patience=args.early_stopping_patience,
+                use_best_weights=args.use_best_weights,
             )
-            if os.path.exists(checkpoint_path):
+            if args.use_best_weights and os.path.exists(checkpoint_path):
                 model.load_weights(checkpoint_path)
             pred = model.predict(test_sample_fetal, verbose=0)
         else:
@@ -346,8 +350,9 @@ def main():
                 lr_reduce_patience=args.lr_reduce_patience,
                 lr_min=args.lr_min,
                 early_stopping_patience=args.early_stopping_patience,
+                use_best_weights=args.use_best_weights,
             )
-            if os.path.exists(checkpoint_path):
+            if args.use_best_weights and os.path.exists(checkpoint_path):
                 model.load_weights(checkpoint_path)
             pred = model.predict(test_sample_full, verbose=0)
 
