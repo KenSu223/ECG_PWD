@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Add
 from tensorflow.keras.models import Model
+from tensorflow.keras.callbacks import ModelCheckpoint
 from scipy.signal import butter, sosfiltfilt
 
 import modules
@@ -98,15 +99,28 @@ def build_one_channel_wavenet(input_shape, filters=64, kernel_size=20, dilation_
     return model
 
 
-def train_model(model, X_train, Y_train, X_val, Y_val, lr, epochs, batch_size):
+def train_model(model, X_train, Y_train, X_val, Y_val, lr, epochs, batch_size, checkpoint_path=None):
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(optimizer=optimizer, loss="mae")
+    callbacks = []
+    if checkpoint_path:
+        callbacks.append(
+            ModelCheckpoint(
+                filepath=checkpoint_path,
+                monitor="val_loss",
+                save_best_only=True,
+                save_weights_only=True,
+                mode="min",
+                verbose=1,
+            )
+        )
     history = model.fit(
         X_train,
         Y_train,
         validation_data=(X_val, Y_val),
         epochs=epochs,
         batch_size=batch_size,
+        callbacks=callbacks,
         verbose=1,
     )
     return history
@@ -159,6 +173,8 @@ def main():
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
+    checkpoints_dir = os.path.join(args.output_dir, "model_checkpoints")
+    os.makedirs(checkpoints_dir, exist_ok=True)
 
     X = np.load(os.path.join(args.data_dir, args.X_file))
     Y = np.load(os.path.join(args.data_dir, args.Y_file))
@@ -219,13 +235,40 @@ def main():
 
     for name, builder in model_builders:
         print(f"\n=== Training: {name} ===")
+        checkpoint_path = os.path.join(
+            checkpoints_dir, name.lower().replace(" ", "_").replace("+", "plus") + ".weights.h5"
+        )
         if "One-channel" in name:
             model = builder(X_train_fetal.shape[1:])
-            train_model(model, X_train_fetal, Y_train, X_val_fetal, Y_val, args.lr, args.epochs, args.batch_size)
+            train_model(
+                model,
+                X_train_fetal,
+                Y_train,
+                X_val_fetal,
+                Y_val,
+                args.lr,
+                args.epochs,
+                args.batch_size,
+                checkpoint_path=checkpoint_path,
+            )
+            if os.path.exists(checkpoint_path):
+                model.load_weights(checkpoint_path)
             pred = model.predict(test_sample_fetal, verbose=0)
         else:
             model = builder(X_train_full.shape[1:])
-            train_model(model, X_train_full, Y_train, X_val_full, Y_val, args.lr, args.epochs, args.batch_size)
+            train_model(
+                model,
+                X_train_full,
+                Y_train,
+                X_val_full,
+                Y_val,
+                args.lr,
+                args.epochs,
+                args.batch_size,
+                checkpoint_path=checkpoint_path,
+            )
+            if os.path.exists(checkpoint_path):
+                model.load_weights(checkpoint_path)
             pred = model.predict(test_sample_full, verbose=0)
 
         pred = np.squeeze(pred)
