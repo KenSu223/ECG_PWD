@@ -85,19 +85,22 @@ def build_one_channel_wavenet(input_shape, filters=64, kernel_size=20, dilation_
     return model
 
 
-def plot_stacked_predictions(output_path, y_true, predictions, titles):
+def plot_stacked_predictions(output_path, y_true, predictions, titles, fs, font_size):
     fig, axes = plt.subplots(len(predictions), 1, figsize=(14, 10), sharex=True)
     if len(predictions) == 1:
         axes = [axes]
 
     for ax, pred, title in zip(axes, predictions, titles):
-        ax.plot(y_true, color="red", linewidth=1, label="Ground Truth")
-        ax.plot(pred, color="blue", linewidth=1, label="Generated")
-        ax.set_title(title)
+        n_samples = len(y_true)
+        t = np.arange(n_samples) / fs
+        ax.plot(t, y_true, color="red", linewidth=1, label="Ground Truth")
+        ax.plot(t, pred, color="blue", linewidth=1, label="Generated")
+        ax.set_title(title, fontsize=font_size)
+        ax.tick_params(axis="both", labelsize=font_size - 2)
         ax.grid(alpha=0.2)
 
-    axes[0].legend(loc="upper right")
-    axes[-1].set_xlabel("Time / Sample Index")
+    axes[0].legend(loc="upper right", fontsize=max(font_size - 2, 8))
+    axes[-1].set_xlabel("Time (s)", fontsize=font_size)
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.close(fig)
@@ -128,6 +131,7 @@ def main():
                         default=str(base_dir / "WaveNet_beat" / "plots" / "model_checkpoints"))
     parser.add_argument("--output_dir", type=str, default=str(base_dir / "WaveNet_beat" / "plots"))
     parser.add_argument("--output_name", type=str, default="four_model_overlay.png")
+    parser.add_argument("--font_size", type=int, default=14)
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -192,7 +196,7 @@ def main():
         titles.append(name)
 
     output_path = os.path.join(args.output_dir, args.output_name)
-    plot_stacked_predictions(output_path, y_true, predictions, titles)
+    plot_stacked_predictions(output_path, y_true, predictions, titles, fs=args.fs, font_size=args.font_size)
     print(f"Saved stacked plot to: {output_path}")
 
 
