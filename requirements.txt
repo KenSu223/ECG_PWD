@@ -1,3 +1,5 @@
+# Full environment snapshot used during repository experiments.
+# For reproducibility this file is intentionally broad and includes notebook/runtime tools.
 a2wsgi==1.10.10
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.2

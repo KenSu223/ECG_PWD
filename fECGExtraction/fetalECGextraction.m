@@ -1,3 +1,6 @@
+% Demonstrates fetal ECG extraction from abdominal ECG using maternal R-peak annotations and KF-based residual extraction.
+% This script is intended as a quick exploratory/illustrative workflow.
+
 clear all
 close all
 

@@ -1,3 +1,6 @@
+% Visualizes aligned Doppler and fetal ECG channels from Leipzig data after Doppler decimation.
+% This script is intended as a quick exploratory/illustrative workflow.
+
 %Script for visualizing the Leipzig data 
 
 clear 

@@ -1,0 +1,273 @@
+"""Single-channel WaveNet architectures and plotting helpers for ECG-to-Doppler experiments. Includes baseline model variants, scalogram utilities, and training-history visualization routines."""
+
+from . import layers
+import numpy as np
+from keras.layers import Input, Reshape, Add, UpSampling1D, concatenate, Multiply, Flatten
+from keras.models import Model, Sequential
+from skimage.transform import resize
+import pywt
+import matplotlib.pyplot as plt
+import os
+
+
+def wavenet_block(x, filters, kernel_size, dilation_rate, input_layer):
+    """Defines a single WaveNet block."""
+    tanh_out = layers.DilatedConv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate, activation='tanh')(x)
+
+    sigmoid_out = layers.DilatedConv1D(filters=filters, kernel_size=kernel_size,  dilation_rate=dilation_rate,activation='sigmoid')(x)
+
+    x = Multiply()([tanh_out, sigmoid_out])
+
+    # Skip connection
+    skip_conn = layers.Conv1D(filters, 1)(x)
+    
+    # Residual connection
+    x = Add()([x, input_layer])
+    
+    return x, skip_conn
+
+def wavenet_block_v2(x_in, filters, kernel_size, dilation_rate):
+    # gated convs (causal, dilated)
+    tanh_out = layers.DilatedConv1D(filters=filters, kernel_size=kernel_size,
+                                   dilation_rate=dilation_rate, activation='tanh')(x_in)
+    sigm_out = layers.DilatedConv1D(filters=filters, kernel_size=kernel_size,
+                                   dilation_rate=dilation_rate, activation='sigmoid')(x_in)
+    x = Multiply()([tanh_out, sigm_out])  # gated output
+
+    # skip connection (1x1)
+    skip = layers.Conv1D(filters, 1)(x)
+
+    # residual projection through conv (1x1) + add
+    res = layers.Conv1D(filters, 1)(x_in)
+    x_out = Add()([x, res])
+    return x_out, skip
+
+def WaveNet_v2(input_shape, filters=64, kernel_size=20, dilation_rates=[2**i for i in range(7)]): 
+
+    # Input layer
+    input_layer = Input(shape=input_shape, name='fetal_ecg_to_doppler')
+
+    # Initial condition layer to start the residual connections
+    skip_connections = []
+
+    x = input_layer
+    #x = layers.DilatedConv1D(filters=filters, kernel_size=1, dilation_rate=1, padding='same')(inp)
+    for dilation_rate in dilation_rates:
+        x, skip_conn = wavenet_block_v2(x, filters, kernel_size, dilation_rate)
+        skip_connections.append(skip_conn)
+
+    out = Add()(skip_connections)
+    out = layers.Activation(out, 'relu')  # post-processing: ReLU -> 1x1 -> ReLU -> 1x1
+    out = layers.Conv1D(filters, 1)(out)
+    out = layers.Activation(out, 'relu')
+    out = layers.Conv1D(1, 1)(out)
+    out = layers.Activation(out, 'tanh')
+
+    # Building the model
+    model = Model(inputs=input_layer, outputs=out, name='WaveNet_one_channel')
+    model.summary()
+    
+    return model
+
+def WaveNet(input_shape, filters=64, kernel_size=20, dilation_rates=[2**i for i in range(7)]): 
+
+    # Input layer
+    input_layer = Input(shape=input_shape)
+
+    # Initial condition layer to start the residual connections
+    skip_connections = []
+
+    x = input_layer
+    #x = layers.Dense(400, activation='tanh')(x)
+    for dilation_rate in dilation_rates:
+        x, skip_conn = wavenet_block(x, filters, kernel_size, dilation_rate, input_layer)
+        skip_connections.append(skip_conn)
+
+    out = Add()(skip_connections)
+    out = layers.Activation(out, 'tanh')
+    out = layers.Conv1D(1,  kernel_size=1)(out)
+    out = layers.Activation(out, 'tanh')
+
+    #out = layers.Conv1D(1,  kernel_size=1)(out)
+    #out = layers.Activation(out, 'tanh')         # final tanh in range [-1,1]
+
+    # Building the model
+    model = Model(inputs=input_layer, outputs=out)
+    model.summary()
+    
+    return model
+
+
+def create_scalogram(sig, fs=284, time_bins=160, freq_bins=80):
+    scales = np.arange(1, freq_bins + 1)
+    coeffs, f = pywt.cwt(sig, scales, wavelet='cgau8', sampling_period=1/fs)
+    coeffs = np.abs(coeffs)
+    return coeffs, f
+
+# process a batch of signals
+def create_batch_scalograms(signals_batch, fs=2000, time_bins=160, freq_bins=80):
+    coeffs = []
+    f_s = []
+    for sig in signals_batch:
+        coeff, f = create_scalogram(sig, fs, time_bins, freq_bins)
+        coeffs.append(coeff)
+        f_s.append(f)
+    return coeffs, f_s
+
+def plot_ecg_doppler_pairs(ecgs, real_dopplers, generated_dopplers):
+    """Plots ECG and corresponding real and generated Doppler pairs."""
+    plt.figure(figsize=(18, 8))
+
+    for i, (ecg, real_dopple, generated_dopple) in enumerate(zip(ecgs, real_dopplers, generated_dopplers)):
+        # Plotting ECG
+        plt.subplot(len(ecgs), 3, 3*i + 1)  # Adjust the number of rows dynamically based on the length of ecgs
+        plt.plot(ecg, color='royalblue')
+        plt.xticks([])
+        plt.yticks([])
+        plt.box(False)
+        plt.axhline(y=0, color='gray', linewidth=1.5, zorder=1)  # x-axis
+        plt.axvline(x=0, color='gray', linewidth=1.5, zorder=1)  # y-axis
+
+        # Plotting Real Doppler
+        plt.subplot(len(ecgs), 3, 3*i + 2)
+        plt.plot(real_dopple, color='blue')
+        plt.xticks([])
+        plt.yticks([])
+        plt.box(False)
+        plt.axhline(y=0, color='gray', linewidth=1.5, zorder=1)  # x-axis
+        plt.axvline(x=0, color='gray', linewidth=1.5, zorder=1)  # y-axis
+
+        # Plotting Generated Doppler
+        plt.subplot(len(ecgs), 3, 3*i + 3)
+        plt.plot(generated_dopple, color='red')
+        plt.xticks([])
+        plt.yticks([])
+        plt.box(False)
+        plt.axhline(y=0, color='gray', linewidth=1.5, zorder=1)  # x-axis
+        plt.axvline(x=0, color='gray', linewidth=1.5, zorder=1)  # y-axis
+
+    plt.tight_layout()
+    plt.savefig('WaveNet_beat/plots/signals_test.jpg')
+    plt.show()
+
+
+def plot_scalogram(real, generated, time_bins=160, freq_bins=80):
+    plt.figure(figsize=(18, 10))
+    coeffs_rs, fs_rs, coeffs_gs, fs_gs = [],[],[],[]
+    fs = 284
+    t = np.linspace(0, len(real)/fs, time_bins)
+    scales = np.arange(1, freq_bins)
+    tensor_real=[]
+    tensor_generated=[]
+    frequencies = fs
+
+    for i in range(len(real)):
+        coeffs_r, fs_r=create_scalogram(real[i],fs,time_bins, freq_bins)
+        coeffs_g, fs_g=create_scalogram(generated[i],fs,time_bins, freq_bins)
+        coeffs_gs.append(coeffs_g)
+        coeffs_rs.append(coeffs_r)
+        fs_gs.append(fs_g)
+        fs_rs.append(fs_r)
+
+    for i in range(len(real)):
+        plt.subplot(len(real), 2, 2*i + 1)
+        plt.pcolormesh(np.arange(coeffs_rs[i].shape[1]) , fs_rs[i],coeffs_rs[i], shading='gouraud', cmap='bwr')
+        plt.yticks([])
+        plt.xticks([])
+        plt.ylim(10,1000)
+
+        plt.subplot(len(real), 2, 2*i + 2)
+        plt.pcolormesh(np.arange(coeffs_gs[i].shape[1]) , fs_gs[i],coeffs_gs[i], shading='gouraud',cmap='bwr')
+        plt.xticks([])
+        plt.yticks([])
+        plt.ylim(10,1000)
+
+    plt.savefig('WaveNet_beat/plots/scalograms_test.jpg')
+    plt.show()
+
+def plot_ecg_doppler_overlay(ecgs, real_dopplers, generated_dopplers, labels=None, colors=None):
+    """
+    Plots ECG, real Doppler, and generated Doppler signals overlaid on the same axes for each sample.
+
+    Parameters:
+    - ecgs: list or array of ECG signals
+    - real_dopplers: list or array of corresponding real Doppler signals
+    - generated_dopplers: list or array of corresponding generated Doppler signals
+    - labels: dict mapping 'ecg', 'real', 'gen' to legend labels (optional)
+    - colors: dict mapping 'ecg', 'real', 'gen' to color strings (optional)
+    """
+    labels = labels or {'ecg': 'ECG', 'real': 'Real Doppler', 'gen': 'Generated Doppler'}
+    colors = colors or {'ecg': 'royalblue', 'real': 'blue', 'gen': 'red'}
+
+    for i, (ecg, real_dop, gen_dop) in enumerate(zip(ecgs, real_dopplers, generated_dopplers), start=1):
+        plt.figure(figsize=(10, 4))
+        plt.plot(ecg, label=labels['ecg'], color=colors['ecg'], linewidth=1)
+        plt.plot(real_dop, label=labels['real'], color=colors['real'], linewidth=1)
+        plt.plot(gen_dop, label=labels['gen'], color=colors['gen'], linewidth=1, linestyle='--')
+
+        plt.title(f'Sample {i}')
+        plt.legend(loc='upper right')
+        plt.xlabel('Time / Sample Index')
+        plt.ylabel('Amplitude')
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(f'WaveNet_beat/plots/signals_test_{i}.jpg')
+        plt.show()
+
+
+# Plot training and validation loss
+def plot_training_history(history, save_dir_plots, split_name="patient_split"):
+    """
+    Plot training and validation loss curves over epochs
+    
+    Args:
+        history: Keras History object from model.fit()
+        save_dir_plots: Directory to save plots
+        split_name: Name of the split (for filename)
+    """
+    # Extract loss values
+    train_loss = history.history['loss']
+    val_loss = history.history.get('val_loss', [])
+    
+    epochs = range(1, len(train_loss) + 1)
+    
+    # Create the plot
+    plt.figure(figsize=(12, 8))
+    
+    # Plot training loss
+    plt.plot(epochs, train_loss, 'b-o', label='Training Loss', linewidth=2, markersize=4)
+    
+    # Plot validation loss if available
+    if val_loss:
+        plt.plot(epochs, val_loss, 'r-s', label='Validation Loss', linewidth=2, markersize=4)
+    
+    # Customize the plot
+    plt.title('Model Training and Validation Loss', fontsize=16, fontweight='bold')
+    plt.xlabel('Epochs', fontsize=14)
+    plt.ylabel('Loss (MAE)', fontsize=14)
+    plt.legend(fontsize=12)
+    plt.grid(True, alpha=0.3)
+    
+    # Add some styling
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    
+    # Add annotations for best validation loss
+    if val_loss:
+        best_epoch = np.argmin(val_loss) + 1
+        best_val_loss = np.min(val_loss)
+        plt.annotate(f'Best Val Loss: {best_val_loss:.4f}\nEpoch: {best_epoch}', 
+                    xy=(best_epoch, best_val_loss), 
+                    xytext=(best_epoch + len(epochs)*0.1, best_val_loss + max(train_loss)*0.1),
+                    arrowprops=dict(arrowstyle='->', color='red', alpha=0.7),
+                    fontsize=10, ha='left',
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7))
+    
+    plt.tight_layout()
+    
+    # Save the plot
+    plot_path = os.path.join(save_dir_plots, f'training_history_{split_name}.png')
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print(f"Training history plot saved to: {plot_path}")
