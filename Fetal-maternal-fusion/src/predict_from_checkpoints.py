@@ -162,10 +162,10 @@ def main():
     y_true = np.squeeze(Y[sample_idx])
 
     model_builders = [
-        ("One-channel (fetal only)", lambda input_shape: build_one_channel_wavenet(input_shape)),
-        ("Two-channel (fetal + maternal)", lambda input_shape: modules.WaveNet_two_channel(input_shape=input_shape)),
-        ("Two-channel (cross-attention)", lambda input_shape: modules.WaveNet_two_channel_cross_attention(input_shape=input_shape)),
-        ("Two-channel (combined attention)", lambda input_shape: modules.WaveNet_two_channel_combined_attention(input_shape=input_shape)),
+        ("(a) One-channel (fetal only)", lambda input_shape: build_one_channel_wavenet(input_shape)),
+        ("(b) Two-channel (fetal + maternal)", lambda input_shape: modules.WaveNet_two_channel(input_shape=input_shape)),
+        ("(c) Two-channel (cross-attention)", lambda input_shape: modules.WaveNet_two_channel_cross_attention(input_shape=input_shape)),
+        ("(d) Two-channel (combined attention)", lambda input_shape: modules.WaveNet_two_channel_combined_attention(input_shape=input_shape)),
     ]
 
     predictions = []
