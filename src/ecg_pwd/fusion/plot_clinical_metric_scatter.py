@@ -1,4 +1,14 @@
-"""Create per-segment scatterplots of clinical Doppler metrics for real vs generated signals."""
+"""Create per-segment scatterplots of clinical Doppler metrics for real vs generated signals.
+
+Usage:
+python Fetal-maternal-fusion/src/plot_clinical_metric_scatter.py \
+  --data_dir Fetal-maternal-fusion/src/WaveNet_beat/data \
+  --val_idx_file Fetal-maternal-fusion/src/idx_val.npy \
+  --train_idx_file Fetal-maternal-fusion/src/idx_train.npy \
+  --checkpoint_path "Fetal-maternal-fusion/src/WaveNet_beat/plots/model_checkpoints/(d)_two-channel_(combined_attention).weights.h5" \
+  --output_dir Fetal-maternal-fusion/src/evaluation_results
+"""
+
 
 from __future__ import annotations
 
